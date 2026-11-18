@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: simulation
+      POSTGRES_USER: simulator
+      POSTGRES_PASSWORD: ${SIMULATION_DB_PASSWORD:-local-simulation}
+    volumes:
+      - simulation_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simulator -d simulation"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  api:
+    build: .
+    environment:
+      TRADING_DATABASE_URL: postgresql+psycopg://simulator:${SIMULATION_DB_PASSWORD:-local-simulation}@db/simulation
+      TRADING_NEWS_LATENCY_SECONDS: ${TRADING_NEWS_LATENCY_SECONDS:-0}
+    ports:
+      - "127.0.0.1:${SIMULATION_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - /app/.venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).close()"
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  simulation_data:
