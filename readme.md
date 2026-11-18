@@ -63,6 +63,22 @@ uv run --locked pip-audit --local --skip-editable
 
 To repeat the integration suite, set `TEST_DATABASE_URL` to a PostgreSQL test database URL and run pytest. The test role needs permission to create temporary test schemas. CI publishes JUnit reports and audits dependencies and Git history.
 
+## Phase 2 historical backtesting
+
+Run the offline EMA backtester with the included synthetic daily candles:
+
+```sh
+uv run --locked python -m trading_platform.backtesting.cli examples/ema-candles.csv \
+  --symbol NSE:DEMO --start 2025-01-06 --end 2025-01-17 \
+  --fast 2 --slow 4 --units 10 > backtest.json
+```
+
+The sample produces two fills, net P&L of −₹102.94, and approximate maximum drawdown of 0.1114%. For an actual backtest, replace the sample with an OHLCV CSV from a source you are authorized to use and specify the matching symbol. Each file represents one symbol. Use the headers `timestamp,open,high,low,close,volume` and strictly increasing ISO 8601 **bar-open** timestamps with a UTC offset. Ensure inputs contain completed candles of a consistent interval.
+
+Start and end dates are inclusive in India Standard Time. Earlier candles warm the EMA without creating orders. The EMA uses completed closes, and the next available in-range open is the first eligible fill. The signal's timestamp identifies its input candle by its opening time. Replay applies the position and exposure limits, a seven-day maximum signal-to-fill gap, and available cash including costs. The gross exposure check uses the next open as the reference mark.
+
+Set `--cash`, `--fee-bps`, and `--slippage-bps` to override the default ₹100,000, 5 bps, and 10 bps. The JSON includes settings, signals, signed fills, fees, slippage, risk rejections, the bar-close equity curve, net P&L including unrealized P&L, and maximum drawdown measured from the highest recorded equity. Trade count counts fills. Open positions are marked at the last close, and a last-bar signal is reported as unfilled. The model assumes full fills at the reference open plus estimated costs. Data quality, corporate actions, liquidity, and actual exchange charges can materially change results.
+
 ## Next milestones
 
 - Confirm permitted data feeds and usage terms for each exchange and agency. Add ingestion persistence, exchange calendars and source-specific monitoring.
