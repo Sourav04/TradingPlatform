@@ -62,7 +62,7 @@ def test_dashboard_uses_same_backtester_and_labels_mock_news(store: Store) -> No
         "mock_news": True,
     }
     with TestClient(create_app(store)) as client:
-        assert "Strategy backtest" in client.get("/dashboard").text
+        assert "Trading operations" in client.get("/dashboard").text
         assert client.get("/dashboard/assets/dashboard.js").status_code == 200
         assert client.get("/dashboard/assets/sample.csv").text == SAMPLE.read_text()
         result = client.post("/backtests", json=payload)

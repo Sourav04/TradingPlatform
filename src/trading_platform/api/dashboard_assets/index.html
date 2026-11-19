@@ -3,20 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Backtest | TradingPlatform</title>
+  <title>Trading operations | TradingPlatform</title>
   <link rel="stylesheet" href="/dashboard/assets/dashboard.css">
   <script src="/dashboard/assets/dashboard.js" defer></script>
+  <script src="/dashboard/assets/operations.js" defer></script>
 </head>
 <body>
   <header><a href="/dashboard">TradingPlatform</a><span>Simulation only</span></header>
   <main>
-    <h1>Strategy backtest</h1>
+    <h1>Trading operations</h1>
+    <nav class="workspace-nav" aria-label="Workspace">
+      <a href="#catalog">Strategies</a><a href="#research">Backtest</a><a href="#paper">Paper trading</a><a href="#live">Live orders</a><a href="#newsroom">News signals</a>
+      <button type="button" class="secondary" id="refresh-operations">Refresh</button>
+    </nav>
+    <p id="operations-status" class="status" role="status" aria-live="polite"></p>
+    <section id="catalog" class="panel workspace-panel">
+      <h2>Strategy catalog</h2>
+      <div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Version</th><th>Code</th><th>Deployment eligibility</th></tr></thead><tbody id="catalog-rows"></tbody></table></div>
+      <h3 class="subheading">Saved backtest evidence</h3>
+      <p id="evidence-empty">Run a backtest to start collecting evidence.</p>
+      <div id="evidence-rows" class="records"></div>
+    </section>
+    <section id="research" class="workspace-panel">
+    <h2 class="section-title">Run a backtest</h2>
     <div class="layout">
       <form id="config" class="panel">
         <h2>Run settings</h2>
         <label>Historical candles <input id="csv" type="file" accept=".csv,text/csv"></label>
         <button type="button" class="secondary" id="sample">Use sample CSV</button>
         <p id="dataset">Synthetic daily candles</p>
+        <label>Strategy <select id="strategy" required></select></label>
         <label>Symbol <input name="symbol" value="NSE:DEMO" required></label>
         <div class="pair">
           <label>Start date <input name="start" type="date" value="2025-01-06" required></label>
@@ -32,7 +48,7 @@
           <h3>Risk controls</h3>
           <div class="pair">
             <label>Stop loss (%) <input name="stop_loss_percent" type="number" step="0.01" min="0.01" max="99.99" value="2" required></label>
-            <label>Risk per trade (%) <input name="max_risk_percent" type="number" step="0.01" min="0.01" max="99.99" value="1" required></label>
+            <label>Risk per trade (%) <input name="max_risk_percent" type="number" step="0.01" min="0.01" max="99.99" value="1" readonly required></label>
           </div>
           <p>A gap can fill below the stop. The risk budget includes estimated fees and slippage.</p>
         </div>
@@ -54,6 +70,23 @@
         <article class="panel"><h2>News available during replay</h2><p id="news-note"></p><ul id="news"></ul></article>
       </section>
     </div>
+    </section>
+    <section id="paper" class="panel workspace-panel">
+      <h2>Paper deployments</h2>
+      <p id="shared-policy"></p>
+      <p id="paper-empty">Approve a backtest configuration to start paper replay.</p>
+      <div id="paper-rows" class="records"></div>
+    </section>
+    <section id="live" class="panel workspace-panel">
+      <h2>Live orders</h2>
+      <p id="live-status">Live execution disabled.</p>
+      <div class="table-wrap"><table><thead><tr><th>Order</th><th>Strategy</th><th>Symbol</th><th>Side</th><th>Status</th><th>Fill</th></tr></thead><tbody id="live-rows"><tr><td colspan="6">No live orders</td></tr></tbody></table></div>
+    </section>
+    <section id="newsroom" class="panel workspace-panel">
+      <h2>News signals</h2>
+      <p id="newsroom-status">Checking recorded official releases…</p>
+      <div id="newsroom-rows" class="records"></div>
+    </section>
   </main>
 </body>
 </html>
