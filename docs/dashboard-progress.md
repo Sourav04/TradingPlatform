@@ -9,6 +9,7 @@ This branch builds on the backtesting dashboard in PR #4. Approval applies once 
 | Shared risk limits, paper approval and replay, reconciled fills, open positions, P&L | Implemented |
 | Official news signals and advisory recommendations | Implemented |
 | Live operations view and hard-disabled execution | Implemented |
+| Persistent automatic backtest queue and evidence | Verified on SQLite, PostgreSQL and Chromium |
 | Browser, SQLite and PostgreSQL verification | Passed. Chromium workflow and 34 tests per database. |
 | Authenticated multi-user approvals and automatic paper feed | Future milestone |
 | Real OpenAlgo strategy import and live market/broker certification | Future milestone |

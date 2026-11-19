@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import TypeAdapter
 from sqlalchemy import ForeignKey, Integer, String, Text, select
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from trading_platform.backtesting.historical import (
     Fill,
@@ -128,8 +128,8 @@ def result(report: Report) -> Results:
     )
 
 
-def evidence_for(
-    store: Store, csv: str, report: Report, candles: list[Candle], sample: bool
+def build_evidence(
+    csv: str, report: Report, candles: list[Candle], sample: bool
 ) -> Evidence:
     settings = report.settings
     dates = sorted({row.bar.astimezone(INDIA).date() for row in report.equity_curve})
@@ -172,7 +172,7 @@ def evidence_for(
         confidence = "Insufficient evidence"
     elif validation.pnl <= 0 or stress is None or stress.pnl <= 0:
         confidence = "Mixed or weak evidence"
-    evidence = Evidence(
+    return Evidence(
         uuid4().hex,
         datetime.now(UTC).isoformat(),
         "Synthetic sample" if sample else "Uploaded CSV",
@@ -190,17 +190,27 @@ def evidence_for(
         confidence,
         reasons,
     )
-    with store.transaction() as session:
-        session.add(
-            EvidenceRow(
-                id=evidence.id,
-                created_at=evidence.created_at,
-                csv_sha256=evidence.csv_sha256,
-                csv=csv,
-                settings=CONFIG.dump_json(settings).decode(),
-                summary=EVIDENCE.dump_json(evidence).decode(),
-            )
+
+
+def save_evidence(session: Session, csv: str, evidence: Evidence) -> None:
+    session.add(
+        EvidenceRow(
+            id=evidence.id,
+            created_at=evidence.created_at,
+            csv_sha256=evidence.csv_sha256,
+            csv=csv,
+            settings=CONFIG.dump_json(evidence.settings).decode(),
+            summary=EVIDENCE.dump_json(evidence).decode(),
         )
+    )
+
+
+def evidence_for(
+    store: Store, csv: str, report: Report, candles: list[Candle], sample: bool
+) -> Evidence:
+    evidence = build_evidence(csv, report, candles, sample)
+    with store.transaction() as session:
+        save_evidence(session, csv, evidence)
     return evidence
 
 

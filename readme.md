@@ -144,6 +144,14 @@ Approve a specific evidence record once. The local paper account allows one depl
 
 The news view shows fresh official releases, first observation time, and advisory recommendations. The live view reports that live execution is disabled. Real-time paper feeds, external strategy imports and live broker certification are tracked in [the dashboard checklist](docs/dashboard-progress.md).
 
+## Automatic backtests
+
+In the dashboard, choose a CSV, strategy, date range, and parameters, then select **Enable automatic backtests**. This registers the validated dataset and configuration. With the API running, a background worker executes the queued job and saves the same evidence used by manual backtests. The dashboard shows queued, running, completed and failed jobs. A completed run does not approve a deployment.
+
+Re-registering identical inputs returns the existing job. A changed CSV or configuration queues a distinct run. A registered plan also follows new versions of its strategy and the evidence suite. Jobs pin the exact version, dataset hash and settings. The worker checks for new versions about every 15 seconds and recovers abandoned claims after a five-minute lease. Avoid running different application versions against the same local workspace database.
+
+The existing Groww downloader produces the same CSV format for registration. Live market streaming is a separate provider adapter and will require reconnect, timestamp, and stale-feed handling. Live order execution remains disabled.
+
 ## Next milestones
 
 - Confirm permitted data feeds and usage terms for each exchange and agency. Add ingestion persistence, exchange calendars and source-specific monitoring.

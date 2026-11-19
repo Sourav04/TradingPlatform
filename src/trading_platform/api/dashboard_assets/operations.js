@@ -72,6 +72,7 @@ function renderEvidence(items, current, policy) {
   element("evidence-rows").replaceChildren(...items.map((item) => {
     const node = document.createElement("details");
     node.className = "record";
+    node.id = "evidence-" + item.id;
     const title = `${item.symbol} · ${item.strategy_id} v${item.strategy_version} · ${item.status} · ${money.format(item.historical.pnl)}`;
     node.append(textNode("summary", title));
     node.append(textNode("p", item.confidence));
@@ -190,5 +191,63 @@ async function refreshOperations() {
   }
 }
 
-element("refresh-operations").addEventListener("click", refreshOperations);
+element("refresh-operations").addEventListener("click", () => {
+  refreshOperations();
+  refreshJobs();
+});
 refreshOperations();
+
+
+let jobsBusy = false;
+let lastCompleted = "";
+let renderedJobs = "";
+
+async function refreshJobs() {
+  if (jobsBusy) return;
+  jobsBusy = true;
+  const status = element("jobs-status");
+  try {
+    const records = await requestOperation("/backtests/jobs");
+    status.textContent = records.length ? "" : "Enable automatic backtests with a sample or validated CSV.";
+    const completed = records.filter((job) => job.evidence_id).map((job) => job.evidence_id).join(",");
+    if (lastCompleted !== completed) {
+      lastCompleted = completed;
+      await refreshOperations();
+    }
+    const signature = JSON.stringify(records);
+    if (signature === renderedJobs) return;
+    renderedJobs = signature;
+    element("job-rows").replaceChildren(...records.map((job) => {
+      const node = document.createElement("details");
+      node.className = "record";
+      const state = job.status[0].toUpperCase() + job.status.slice(1);
+      node.append(textNode("summary", `${state} · ${job.symbol} · ${job.strategy_id} v${job.strategy_version}`));
+      const settings = job.settings;
+      node.append(textNode("p", `${settings.start} to ${settings.end} · EMA ${settings.fast}/${settings.slow} · ${settings.units} units · Suite v${job.suite_version}`));
+      node.append(textNode("p", `Fees ${settings.costs.fee_bps} bps · Slippage ${settings.costs.slippage_bps} bps · Stop ${settings.stop_loss_percent}% · Cash ${money.format(settings.initial_cash)}`));
+      node.append(textNode("p", `${job.sample ? "Synthetic sample" : "Uploaded CSV"} · SHA-256 ${job.dataset_hash}`));
+      if (job.historical) {
+        const result = job.historical;
+        node.append(textNode("p", `Net P&L ${money.format(result.pnl)} · Drawdown ${compact.format(result.drawdown)}% · ${result.fills} fills`));
+      }
+      if (job.error) node.append(textNode("p", job.error, "negative"));
+      if (job.evidence_id && element("evidence-" + job.evidence_id)) {
+        const link = textNode("a", "View evidence");
+        link.href = "#evidence-" + job.evidence_id;
+        link.addEventListener("click", () => {
+          const evidence = element("evidence-" + job.evidence_id);
+          if (evidence) evidence.open = true;
+        });
+        node.append(link);
+      }
+      return node;
+    }));
+  } catch (error) {
+    status.textContent = "Unable to load automatic backtests. " + error.message;
+  } finally {
+    jobsBusy = false;
+  }
+}
+
+refreshJobs();
+setInterval(refreshJobs, 3000);
