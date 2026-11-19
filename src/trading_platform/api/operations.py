@@ -10,6 +10,12 @@ from pydantic import BaseModel, Field
 from trading_platform.execution.store import Store
 from trading_platform.news_engine.events import Event, Source, replay
 from trading_platform.news_engine.journal import events_during
+from trading_platform.operations.stream_paper import (
+    StreamView,
+    approve_stream,
+    stream_control,
+    stream_overview,
+)
 from trading_platform.operations.workspace import (
     DAILY_LOSS,
     RISK_BUDGET,
@@ -67,6 +73,7 @@ class OperationsOverview:
     max_gross_inr: Decimal
     live_enabled: bool
     live_orders: tuple[()]
+    streaming_paper: list[StreamView]
 
 
 class PaperApproval(BaseModel):
@@ -97,6 +104,7 @@ def operations_router(store: Store, latency: timedelta) -> APIRouter:
             RiskLimits().max_gross,
             False,
             (),
+            stream_overview(store, now),
         )
 
     @router.post("/paper", status_code=201)
@@ -110,6 +118,26 @@ def operations_router(store: Store, latency: timedelta) -> APIRouter:
     def change(paper_id: str, command: PaperAction) -> Paper:
         try:
             return change_paper(store, paper_id, command.revision, command.action)
+        except ApprovalError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.get("/stream-paper")
+    def stream_status() -> list[StreamView]:
+        return stream_overview(store, datetime.now(UTC))
+
+    @router.post("/stream-paper", status_code=201)
+    def start_stream(approval: PaperApproval) -> StreamView:
+        try:
+            return approve_stream(store, approval.evidence_id, datetime.now(UTC))
+        except ApprovalError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.post("/stream-paper/{paper_id}")
+    def change_stream(paper_id: str, command: PaperAction) -> StreamView:
+        try:
+            return stream_control(
+                store, paper_id, command.revision, command.action, datetime.now(UTC)
+            )
         except ApprovalError as exc:
             raise HTTPException(409, str(exc)) from exc
 

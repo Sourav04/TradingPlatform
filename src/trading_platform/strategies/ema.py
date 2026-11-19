@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
 
@@ -6,6 +7,14 @@ from trading_platform.core.models import Quote, Signal
 
 class Strategy(Protocol):
     def on_quote(self, quote: Quote) -> Signal | None: ...
+
+
+@dataclass(frozen=True)
+class EMAState:
+    quote: Quote
+    fast: Decimal
+    slow: Decimal
+    count: int
 
 
 class EMACrossover:
@@ -18,19 +27,30 @@ class EMACrossover:
         self._slow_alpha = Decimal(2) / (slow + 1)
         self._warmup = slow
         self._size = size
-        self._series: dict[str, tuple[Quote, Decimal, Decimal, int]] = {}
+        self._series: dict[str, EMAState] = {}
+
+    def restore(self, state: EMAState) -> None:
+        self._series[state.quote.symbol] = state
+
+    def checkpoint(self, symbol: str) -> EMAState | None:
+        return self._series.get(symbol)
 
     def on_quote(self, quote: Quote) -> Signal | None:
         previous = self._series.get(quote.symbol)
         if previous is None:
-            self._series[quote.symbol] = (quote, quote.price, quote.price, 1)
+            self._series[quote.symbol] = EMAState(quote, quote.price, quote.price, 1)
             return None
-        last_quote, fast, slow, count = previous
+        last_quote, fast, slow, count = (
+            previous.quote,
+            previous.fast,
+            previous.slow,
+            previous.count,
+        )
         if quote.timestamp <= last_quote.timestamp:
             raise ValueError("EMA requires strictly ordered quotes")
         next_fast = fast + (quote.price - fast) * self._fast_alpha
         next_slow = slow + (quote.price - slow) * self._slow_alpha
-        self._series[quote.symbol] = (quote, next_fast, next_slow, count + 1)
+        self._series[quote.symbol] = EMAState(quote, next_fast, next_slow, count + 1)
         if count + 1 < self._warmup:
             return None
         if fast <= slow and next_fast > next_slow:
