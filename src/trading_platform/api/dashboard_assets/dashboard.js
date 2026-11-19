@@ -135,6 +135,9 @@ form.addEventListener("submit", async (event) => {
       if (!sample.ok) throw new Error("Sample CSV unavailable.");
       payload.csv = await sample.text();
     }
+    const [strategyId, version] = element("strategy").value.split("@");
+    payload.strategy_id = strategyId;
+    payload.strategy_version = version;
     payload.mock_news = !file;
     const response = await fetch("/backtests", {
       method: "POST",
@@ -148,6 +151,7 @@ form.addEventListener("submit", async (event) => {
     }
     render(result);
     status.textContent = "Backtest complete.";
+    refreshOperations();
   } catch (error) {
     status.textContent = error.message;
   } finally {
