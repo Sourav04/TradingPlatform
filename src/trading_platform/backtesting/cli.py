@@ -24,6 +24,8 @@ def main() -> None:
     parser.add_argument("--cash", default="100000")
     parser.add_argument("--fee-bps", default="5")
     parser.add_argument("--slippage-bps", default="10")
+    parser.add_argument("--stop-loss-percent", type=Decimal)
+    parser.add_argument("--max-risk-percent", type=Decimal)
     args = parser.parse_args()
     try:
         settings = Settings(
@@ -35,6 +37,8 @@ def main() -> None:
             args.units,
             Decimal(args.cash),
             Costs(Decimal(args.fee_bps), Decimal(args.slippage_bps)),
+            stop_loss_percent=args.stop_loss_percent,
+            max_risk_percent=args.max_risk_percent,
         )
         report = backtest(read_candles(args.csv), settings)
     except (OSError, ValueError, InvalidOperation) as exc:

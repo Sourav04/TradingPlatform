@@ -5,8 +5,10 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
+from trading_platform.api.dashboard import ASSETS, dashboard_router
 from trading_platform.backtesting.replay import SimulatedFill, run_replay
 from trading_platform.brokers.contracts import BrokerUnavailable
 from trading_platform.brokers.fake import FakeBroker
@@ -46,6 +48,11 @@ def create_app(store: Store | None = None) -> FastAPI:
             database.engine.dispose()
 
     api = FastAPI(title="TradingPlatform Simulation", lifespan=lifespan)
+
+    api.include_router(dashboard_router(database, latency))
+    api.mount(
+        "/dashboard/assets", StaticFiles(directory=ASSETS), name="dashboard-assets"
+    )
 
     @api.exception_handler(SQLAlchemyError)
     @api.exception_handler(BrokerUnavailable)

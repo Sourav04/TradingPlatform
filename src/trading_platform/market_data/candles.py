@@ -1,5 +1,5 @@
 import csv
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -36,27 +36,31 @@ class Candle:
 
 def read_candles(path: Path) -> Iterator[Candle]:
     with path.open(encoding="utf-8-sig", newline="") as source:
-        records = csv.DictReader(source, strict=True)
+        yield from parse_candles(source)
+
+
+def parse_candles(source: Iterable[str]) -> Iterator[Candle]:
+    records = csv.DictReader(source, strict=True)
+    try:
         fields = records.fieldnames or []
         if not set(COLUMNS).issubset(fields) or len(fields) != len(set(fields)):
             raise ValueError(
                 "CSV requires unique timestamp, open, high, low, close, volume headers"
             )
-        try:
-            for row in records:
-                try:
-                    if None in row or any(row[field] is None for field in COLUMNS):
-                        raise ValueError("Invalid number of columns")
-                    candle = Candle(
-                        datetime.fromisoformat(row["timestamp"]),
-                        Decimal(row["open"]),
-                        Decimal(row["high"]),
-                        Decimal(row["low"]),
-                        Decimal(row["close"]),
-                        int(row["volume"]),
-                    )
-                except (ValueError, InvalidOperation) as exc:
-                    raise ValueError(f"CSV line {records.line_num}: {exc}") from exc
-                yield candle
-        except csv.Error as exc:
-            raise ValueError(f"CSV line {records.line_num}: {exc}") from exc
+        for row in records:
+            try:
+                if None in row or any(row[field] is None for field in COLUMNS):
+                    raise ValueError("Invalid number of columns")
+                candle = Candle(
+                    datetime.fromisoformat(row["timestamp"]),
+                    Decimal(row["open"]),
+                    Decimal(row["high"]),
+                    Decimal(row["low"]),
+                    Decimal(row["close"]),
+                    int(row["volume"]),
+                )
+            except (ValueError, InvalidOperation) as exc:
+                raise ValueError(f"CSV line {records.line_num}: {exc}") from exc
+            yield candle
+    except csv.Error as exc:
+        raise ValueError(f"CSV line {records.line_num}: {exc}") from exc
