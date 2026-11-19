@@ -124,7 +124,7 @@ uv run --locked uvicorn trading_platform.api.app:app
 
 Select the synthetic sample or upload a single-symbol OHLCV CSV. Enter the symbol and date range, then run the backtest to see equity, P&L, drawdown, trades, risk rejections, and news available at candle opens during the run.
 
-Every dashboard buy fill has a simulated stop. The defaults are a 2% price stop and a 1% estimated equity risk budget per trade, both editable examples. An entry is rejected if its modeled loss at the stop plus fees and slippage exceeds its risk budget. If the candle opens below an existing stop, the simulator exits at the open. Otherwise a candle low at or below the stop triggers an exit at the stop. A stop can trigger on the entry candle. Gap and slippage losses can exceed the risk budget. The engine assumes a full fill and does not infer finer price paths from OHLC data. The CLI supports the same controls with `--stop-loss-percent` and `--max-risk-percent`.
+Every dashboard buy fill has a simulated stop. The default price stop is 2% and can be edited. The workspace uses a shared 1% estimated equity risk budget per trade. An entry is rejected if its modeled loss at the stop plus fees and slippage exceeds its risk budget. If the candle opens below an existing stop, the simulator exits at the open. Otherwise a candle low at or below the stop triggers an exit at the stop. A stop can trigger on the entry candle. Gap and slippage losses can exceed the risk budget. The engine assumes a full fill and does not infer finer price paths from OHLC data. The CLI supports the same controls with `--stop-loss-percent` and `--max-risk-percent`.
 
 Record public press releases on demand using the same `TRADING_DATABASE_URL` as the dashboard:
 
@@ -133,6 +133,16 @@ uv run --locked python -m trading_platform.news_engine.official --source all
 ```
 
 The collector uses the RSS feeds published by the [Reserve Bank of India](https://www.rbi.org.in/Scripts/rss.aspx) and the [Federal Reserve](https://www.federalreserve.gov/feeds/feeds.htm). It stores publication time and first observed time, and repeated polls retain the original observation. Uploaded CSVs show recorded events. The synthetic sample shows labeled mock news. The replay applies the 24-hour freshness and ingestion cutoff at each eligible candle open. News is displayed alongside price results. It has no bearing on EMA signals or execution.
+
+## Trading operations workspace
+
+Open [the local dashboard](http://127.0.0.1:8000/dashboard) to view the code-backed strategy catalog, run and save evidence, approve paper replay, and review recorded official news. The workspace is intended for one local operator. Keep the API bound to loopback.
+
+A saved backtest retains its exact CSV, hash, strategy version, configuration and results. It also reruns a later date window when there are enough dates, and a double-slippage scenario when the cost settings allow. The later window is a chronological check. Use a separate dataset for an independent out-of-sample test. Evidence is eligible for paper replay only. The current code registry contains the in-repository EMA crossover.
+
+Approve a specific evidence record once. The local paper account allows one deployment at a time, with a shared 1% estimated risk per trade, 2% daily loss limit, and ₹100,000 gross exposure cap. Advance one historical candle at a time. Pausing blocks new entries while later candles can still trigger protective exits. Closing flattens any open paper position at the last recorded candle close with modeled costs. Orders and P&L in this workflow are simulated from candle data. An uploaded dataset can be saved and replayed without Groww credentials.
+
+The news view shows fresh official releases, first observation time, and advisory recommendations. The live view reports that live execution is disabled. Real-time paper feeds, external strategy imports and live broker certification are tracked in [the dashboard checklist](docs/dashboard-progress.md).
 
 ## Next milestones
 
