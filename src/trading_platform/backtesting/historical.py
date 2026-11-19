@@ -23,6 +23,9 @@ class Settings:
     costs: Costs = Costs()
     limits: RiskLimits = RiskLimits(quote_age=timedelta(days=7))
 
+    stop_loss_percent: Decimal | None = None
+    max_risk_percent: Decimal | None = None
+
     def __post_init__(self) -> None:
         if not self.symbol.startswith("NSE:") or not self.symbol[4:].strip():
             raise ValueError("Use an NSE symbol such as NSE:RELIANCE")
@@ -41,6 +44,14 @@ class Settings:
                 "Costs must be finite, nonnegative and total less than 10000 bps"
             )
 
+        for percent in (self.stop_loss_percent, self.max_risk_percent):
+            if percent is not None and (
+                not percent.is_finite() or not 0 < percent < 100
+            ):
+                raise ValueError("Risk percentages must be above 0 and below 100")
+        if self.max_risk_percent is not None and self.stop_loss_percent is None:
+            raise ValueError("A risk budget requires a stop loss")
+
 
 @dataclass(frozen=True)
 class Fill:
@@ -50,6 +61,39 @@ class Fill:
     open_price: Decimal
     fee: Decimal
     slippage: Decimal
+    reason: str = "ema"
+    execution_price: Decimal | None = None
+    stop_price: Decimal | None = None
+
+    @property
+    def cash_change(self) -> Decimal:
+        price = (
+            self.open_price if self.execution_price is None else self.execution_price
+        )
+        return -self.units * price - self.fee - self.slippage
+
+
+def priced_fill(
+    candle: Candle,
+    signal_bar: datetime,
+    quantity: int,
+    costs: Costs,
+    execution_price: Decimal,
+    reason: str,
+    stop_price: Decimal | None,
+) -> Fill:
+    notional = abs(quantity) * execution_price
+    return Fill(
+        signal_bar,
+        candle.timestamp,
+        quantity,
+        candle.open,
+        notional * costs.fee_bps / 10_000,
+        notional * costs.slippage_bps / 10_000,
+        reason,
+        execution_price,
+        stop_price,
+    )
 
 
 @dataclass(frozen=True)
@@ -92,6 +136,7 @@ def backtest(candles: Iterable[Candle], settings: Settings) -> Report:
     drawdown = Decimal(0)
     pending = None
     previous = None
+    stop: tuple[Decimal, datetime] | None = None
     signals: list[Signal] = []
     fills: list[Fill] = []
     rejections: list[Rejection] = []
@@ -109,34 +154,86 @@ def backtest(candles: Iterable[Candle], settings: Settings) -> Report:
             strategy.on_quote(close)
             continue
 
+        # A down-gap stop already active at the open takes precedence over an EMA order.
+        if stop is not None and candle.open <= stop[0]:
+            fill = priced_fill(
+                candle,
+                stop[1],
+                -units,
+                settings.costs,
+                candle.open,
+                "stop_loss",
+                stop[0],
+            )
+            fills.append(fill)
+            cash += fill.cash_change
+            units, stop, pending = 0, None, None
+
         if pending is not None:
             clock.current = candle.timestamp
             feed.publish(Quote(settings.symbol, candle.timestamp, candle.open))
             try:
                 quantity = risk.check(pending, {settings.symbol: units}, killed=False)
-                notional = quantity * candle.open
-                fee = abs(notional) * settings.costs.fee_bps / 10_000
-                slippage = abs(notional) * settings.costs.slippage_bps / 10_000
-                next_cash = cash - notional - fee - slippage
-                if next_cash < 0:
-                    raise RiskDenied("Insufficient cash including costs")
                 if quantity:
-                    fills.append(
-                        Fill(
-                            pending.quote.timestamp,
-                            candle.timestamp,
-                            quantity,
-                            candle.open,
-                            fee,
-                            slippage,
-                        )
+                    trigger = None
+                    if quantity > 0 and settings.stop_loss_percent is not None:
+                        trigger = candle.open * (1 - settings.stop_loss_percent / 100)
+                    fill = priced_fill(
+                        candle,
+                        pending.quote.timestamp,
+                        quantity,
+                        settings.costs,
+                        candle.open,
+                        "ema",
+                        trigger,
                     )
-                    cash = next_cash
+                    if (
+                        quantity > 0
+                        and trigger is not None
+                        and settings.max_risk_percent is not None
+                    ):
+                        exit_at_stop = priced_fill(
+                            candle,
+                            pending.quote.timestamp,
+                            -quantity,
+                            settings.costs,
+                            trigger,
+                            "stop_loss",
+                            trigger,
+                        )
+                        planned_loss = -(fill.cash_change + exit_at_stop.cash_change)
+                        budget = (
+                            (cash + units * candle.open)
+                            * settings.max_risk_percent
+                            / 100
+                        )
+                        if planned_loss > budget:
+                            raise RiskDenied(
+                                "Estimated loss at the stop exceeds the risk budget"
+                            )
+                    if cash + fill.cash_change < 0:
+                        raise RiskDenied("Insufficient cash including costs")
+                    fills.append(fill)
+                    cash += fill.cash_change
                     units += quantity
+                    stop = (
+                        (trigger, pending.quote.timestamp)
+                        if trigger is not None
+                        else None
+                    )
             except RiskDenied as exc:
                 rejections.append(
                     Rejection(pending.quote.timestamp, candle.timestamp, str(exc))
                 )
+
+        # The stop becomes active immediately after an opening fill and before the close.
+        if stop is not None and candle.low <= stop[0]:
+            fill = priced_fill(
+                candle, stop[1], -units, settings.costs, stop[0], "stop_loss", stop[0]
+            )
+            fills.append(fill)
+            cash += fill.cash_change
+            units, stop = 0, None
 
         value = cash + units * candle.close
         equity.append(Equity(candle.timestamp, cash, units, value))

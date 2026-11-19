@@ -113,6 +113,27 @@ uv run --locked python -m trading_platform.backtesting.cli \
 
 Spot-check the first and last candles and the open price used for any fill. Repeat against the same CSV to confirm identical output. The automated suite uses mock Groww responses, so it runs without an account or network access. Keep downloaded datasets local unless the applicable data terms permit sharing.
 
+## Dashboard, simulated stops, and official news
+
+Start the API and open [the local dashboard](http://127.0.0.1:8000/dashboard).
+
+```sh
+uv sync --locked
+uv run --locked uvicorn trading_platform.api.app:app
+```
+
+Select the synthetic sample or upload a single-symbol OHLCV CSV. Enter the symbol and date range, then run the backtest to see equity, P&L, drawdown, trades, risk rejections, and news available at candle opens during the run.
+
+Every dashboard buy fill has a simulated stop. The defaults are a 2% price stop and a 1% estimated equity risk budget per trade, both editable examples. An entry is rejected if its modeled loss at the stop plus fees and slippage exceeds its risk budget. If the candle opens below an existing stop, the simulator exits at the open. Otherwise a candle low at or below the stop triggers an exit at the stop. A stop can trigger on the entry candle. Gap and slippage losses can exceed the risk budget. The engine assumes a full fill and does not infer finer price paths from OHLC data. The CLI supports the same controls with `--stop-loss-percent` and `--max-risk-percent`.
+
+Record public press releases on demand using the same `TRADING_DATABASE_URL` as the dashboard:
+
+```sh
+uv run --locked python -m trading_platform.news_engine.official --source all
+```
+
+The collector uses the RSS feeds published by the [Reserve Bank of India](https://www.rbi.org.in/Scripts/rss.aspx) and the [Federal Reserve](https://www.federalreserve.gov/feeds/feeds.htm). It stores publication time and first observed time, and repeated polls retain the original observation. Uploaded CSVs show recorded events. The synthetic sample shows labeled mock news. The replay applies the 24-hour freshness and ingestion cutoff at each eligible candle open. News is displayed alongside price results. It has no bearing on EMA signals or execution.
+
 ## Next milestones
 
 - Confirm permitted data feeds and usage terms for each exchange and agency. Add ingestion persistence, exchange calendars and source-specific monitoring.
