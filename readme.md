@@ -79,6 +79,40 @@ Start and end dates are inclusive in India Standard Time. Earlier candles warm t
 
 Set `--cash`, `--fee-bps`, and `--slippage-bps` to override the default ₹100,000, 5 bps, and 10 bps. The JSON includes settings, signals, signed fills, fees, slippage, risk rejections, the bar-close equity curve, net P&L including unrealized P&L, and maximum drawdown measured from the highest recorded equity. Trade count counts fills. Open positions are marked at the last close, and a last-bar signal is reported as unfilled. The model assumes full fills at the reference open plus estimated costs. Data quality, corporate actions, liquidity, and actual exchange charges can materially change results.
 
+Additional synthetic CSVs in `examples/mock-candles/` exercise cases beyond the sample round trip. Use `--symbol NSE:DEMO --start 2025-01-06 --end 2025-01-20` for all three.
+
+| CSV | Expected outcome |
+| --- | --- |
+| `flat-market.csv` | No signals or fills |
+| `missing-sessions.csv` | One stale-signal rejection after a ten-day gap |
+| `open-position.csv` | One fill, 10 units held at the end, and ₹38.44 net mark-to-market P&L |
+
+## Phase 3 Groww historical data
+
+The standalone downloader makes one historical-data GET request for one NSE cash symbol and completed daily candles. Use a Groww account enabled for historical data and generate an **access token** following the official instructions. Keep your token in your local terminal. [Groww authentication](https://groww.in/trade-api/docs/curl) · [Historical candle contract](https://groww.in/trade-api/docs/curl/backtesting)
+
+In Bash, from this checkout:
+
+```bash
+uv sync --locked
+read -rsp 'Groww access token: ' GROWW_ACCESS_TOKEN; printf '\n'
+GROWW_ACCESS_TOKEN="$GROWW_ACCESS_TOKEN" uv run --locked python -m trading_platform.market_data.groww_cli \
+  --symbol NSE:WIPRO --start 2025-09-01 --end 2025-09-30 --output groww-wipro-sep-2025
+unset GROWW_ACCESS_TOKEN
+```
+
+Choose an inclusive range of at most 180 dates ending before today in India. The output directory must be new. The CSV uses UTC timestamps. Timezone-free timestamps from Groww are interpreted as India local time, consistent with the market times in the vendor examples. Duplicate daily candles, wrong-interval responses and invalid OHLCV rows fail validation. Metadata includes the request range, coverage, the CSV's SHA-256 checksum, and possible missing weekdays. Check missing weekdays against the exchange calendar since the downloader does not classify holidays.
+
+Backtest the saved data with:
+
+```sh
+uv run --locked python -m trading_platform.backtesting.cli \
+  groww-wipro-sep-2025/candles.csv --symbol NSE:WIPRO \
+  --start 2025-09-01 --end 2025-09-30
+```
+
+Spot-check the first and last candles and the open price used for any fill. Repeat against the same CSV to confirm identical output. The automated suite uses mock Groww responses, so it runs without an account or network access. Keep downloaded datasets local unless the applicable data terms permit sharing.
+
 ## Next milestones
 
 - Confirm permitted data feeds and usage terms for each exchange and agency. Add ingestion persistence, exchange calendars and source-specific monitoring.
