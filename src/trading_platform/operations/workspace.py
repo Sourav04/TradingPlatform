@@ -50,6 +50,17 @@ class PaperRow(Base):
     snapshot: Mapped[str] = mapped_column(Text)
 
 
+class StreamPaperRow(Base):
+    __tablename__ = "stream_paper"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    evidence_id: Mapped[str] = mapped_column(ForeignKey("dashboard_evidence.id"))
+    symbol: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20))
+    snapshot: Mapped[str] = mapped_column(Text)
+    approved_at: Mapped[str] = mapped_column(String(40))
+
+
 @dataclass(frozen=True)
 class Results:
     bars: int
@@ -229,38 +240,47 @@ def overview(store: Store) -> tuple[list[Evidence], list[Paper]]:
         ]
 
 
+def approval_evidence(session: Session, evidence_id: str) -> Evidence:
+    if session.get_one(Control, 1).killed:
+        raise ApprovalError("The simulation kill switch is active")
+    active = session.scalar(
+        select(PaperRow.id).where(PaperRow.status != "closed").limit(1)
+    )
+    streaming = session.scalar(
+        select(StreamPaperRow.id).where(StreamPaperRow.status != "closed").limit(1)
+    )
+    if active or streaming:
+        raise ApprovalError(
+            "Close the existing paper deployment before approving another"
+        )
+    row = session.get(EvidenceRow, evidence_id)
+    if row is None:
+        raise ApprovalError("Backtest evidence not found")
+    evidence = EVIDENCE.validate_json(row.summary)
+    settings = evidence.settings
+    if evidence.status != "Paper only":
+        raise ApprovalError(
+            f"Paper replay supports up to {MAX_PAPER_BARS} candles per deployment"
+        )
+    if (
+        settings.max_risk_percent != RISK_BUDGET
+        or settings.max_daily_loss_percent != DAILY_LOSS
+        or settings.stop_loss_percent is None
+    ):
+        raise ApprovalError(
+            "Backtest must use the shared paper risk policy before approval"
+        )
+    return evidence
+
+
 def approve_paper(store: Store, evidence_id: str) -> Paper:
     with store.transaction() as session:
-        if session.get_one(Control, 1).killed:
-            raise ApprovalError("The simulation kill switch is active")
-        active = session.scalar(
-            select(PaperRow.id).where(PaperRow.status != "closed").limit(1)
-        )
-        if active:
-            raise ApprovalError(
-                "Close the existing paper deployment before approving another"
-            )
-        row = session.get(EvidenceRow, evidence_id)
-        if row is None:
-            raise ApprovalError("Backtest evidence not found")
-        evidence = EVIDENCE.validate_json(row.summary)
+        evidence = approval_evidence(session, evidence_id)
         settings = evidence.settings
-        if evidence.status != "Paper only":
-            raise ApprovalError(
-                f"Paper replay supports up to {MAX_PAPER_BARS} candles per deployment"
-            )
-        if (
-            settings.max_risk_percent != RISK_BUDGET
-            or settings.max_daily_loss_percent != DAILY_LOSS
-            or settings.stop_loss_percent is None
-        ):
-            raise ApprovalError(
-                "Backtest must use the shared paper risk policy before approval"
-            )
         approved_at = datetime.now(UTC).isoformat()
         paper = Paper(
             uuid4().hex,
-            row.id,
+            evidence.id,
             approved_at,
             settings.strategy_id,
             settings.strategy_version,
@@ -283,7 +303,7 @@ def approve_paper(store: Store, evidence_id: str) -> Paper:
         session.add(
             PaperRow(
                 id=paper.id,
-                evidence_id=row.id,
+                evidence_id=evidence.id,
                 approved_at=paper.approved_at,
                 status=paper.status,
                 cursor=0,

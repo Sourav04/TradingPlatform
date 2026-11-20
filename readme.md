@@ -150,7 +150,25 @@ In the dashboard, choose a CSV, strategy, date range, and parameters, then selec
 
 Re-registering identical inputs returns the existing job. A changed CSV or configuration queues a distinct run. A registered plan also follows new versions of its strategy and the evidence suite. Jobs pin the exact version, dataset hash and settings. The worker checks for new versions about every 15 seconds and recovers abandoned claims after a five-minute lease. Avoid running different application versions against the same local workspace database.
 
-The existing Groww downloader produces the same CSV format for registration. Live market streaming is a separate provider adapter and will require reconnect, timestamp, and stale-feed handling. Live order execution remains disabled.
+The existing Groww downloader produces the same CSV format for registration. Groww live streaming uses the separate optional streaming collector below. Live order execution remains disabled.
+
+## Streaming paper with Groww
+
+Streaming paper uses an approved evidence record, live Groww NSE cash prices and simulated fills. Start the dashboard, upload and backtest an authorized regular-session five-minute CSV for one NSE cash symbol, then select **Approve Groww paper stream** on that evidence. Close any existing paper deployment before approving another. Set the collector and dashboard to the same `TRADING_DATABASE_URL`. With the local Python setup, both use the same SQLite file when run from the checkout.
+
+Download the official Groww instrument master CSV and supply its local path. The collector resolves an exact NSE cash symbol to its exchange token. Set `GROWW_ACCESS_TOKEN` locally as described above and run during market hours:
+
+```sh
+GROWW_ACCESS_TOKEN="$GROWW_ACCESS_TOKEN" uv run --locked --with growwapi==1.5.0 \
+  python -m trading_platform.market_data.groww_stream \
+  --symbol NSE:WIPRO --instruments /path/to/groww-instruments.csv
+```
+
+To check market-data access before approving a paper deployment, add `--probe`. This prints received quotes with timestamps and does not touch the database. Stop the probe with Ctrl+C.
+
+The dashboard polls for feed status, completed five-minute candle count, positions, simulated fills and P&L. The initial partial candle is discarded for signals. A disconnect or more than 30 seconds between ticks resets EMA warmup. Stale, duplicate and out-of-order ticks cannot execute fills. The feed process retries up to three connection attempts when the SDK returns or raises. If updates stop silently, the dashboard marks the feed stale. LTP-derived candles have no exchange volume and do not imply that every trade was observed.
+
+Entries fill at an observed tick after a completed candle. Stops and closing exits use fresh observed ticks, including after a gap or while entries are paused. The runner targets a flat position in the final five minutes of the regular NSE session. If no fresh quote was available, it closes the remaining position at the first fresh tick of the next session. A feed outage can delay exits and increase simulated loss. The runner accepts regular NSE hours on weekdays and does not model special sessions. The implementation only subscribes to market data and never calls a Groww order endpoint.
 
 ## Next milestones
 
