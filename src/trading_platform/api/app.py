@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from trading_platform.api.dashboard import ASSETS, dashboard_router
 from trading_platform.api.operations import operations_router
+from trading_platform.api.performance import performance_router
 from trading_platform.backtesting.replay import SimulatedFill, run_replay
 from trading_platform.brokers.contracts import BrokerUnavailable
 from trading_platform.brokers.fake import FakeBroker
@@ -62,6 +63,7 @@ def create_app(store: Store | None = None, *, start_worker: bool = False) -> Fas
 
     api.include_router(dashboard_router(database, latency))
     api.include_router(operations_router(database, latency))
+    api.include_router(performance_router(database))
     api.mount(
         "/dashboard/assets", StaticFiles(directory=ASSETS), name="dashboard-assets"
     )

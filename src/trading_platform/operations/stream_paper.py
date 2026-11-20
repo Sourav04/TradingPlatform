@@ -18,6 +18,8 @@ from trading_platform.market_data.live_candles import (
     session_quote,
     update_candle,
 )
+from trading_platform.operations.session_report import Session as PaperSession
+from trading_platform.operations.session_report import record_session
 from trading_platform.operations.workspace import (
     CONFIG,
     ApprovalError,
@@ -44,6 +46,8 @@ class StreamState:
     complete_candidate: bool = False
     daily_start: Decimal = Decimal(0)
     daily_halted: bool = False
+    sessions: tuple[PaperSession, ...] = ()
+    history_started_late: bool = False
 
 
 @dataclass(frozen=True)
@@ -356,7 +360,18 @@ def process_tick(
     paper = replace(paper, equity=value, unrealized=unrealized, mark=tick.price)
     candidate = continuous and (rollover or state.complete_candidate)
     return StreamState(
-        paper, candle, ema, tick, now, False, candidate, daily_start, daily_halted
+        paper,
+        candle,
+        ema,
+        tick,
+        now,
+        False,
+        candidate,
+        daily_start,
+        daily_halted,
+        record_session(state.sessions, state.paper, paper, tick.timestamp),
+        state.history_started_late
+        or (not state.sessions and state.last_tick is not None),
     )
 
 
@@ -439,6 +454,17 @@ def stream_control(
             )
         audit = [*paper.audit, PaperAudit(action, now.isoformat())]
         paper = replace(paper, status=status, revision=paper.revision + 1, audit=audit)
-        state = replace(state, paper=paper)
+        sessions = state.sessions
+        if len(paper.fills) > len(state.paper.fills):
+            sessions = record_session(
+                sessions, state.paper, paper, paper.fills[-1].fill_bar
+            )
+        state = replace(
+            state,
+            paper=paper,
+            sessions=sessions,
+            history_started_late=state.history_started_late
+            or (not state.sessions and state.last_tick is not None),
+        )
         row.status, row.snapshot = status, STATE.dump_json(state).decode()
         return view(state, now)

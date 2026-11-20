@@ -170,6 +170,12 @@ The dashboard polls for feed status, completed five-minute candle count, positio
 
 Entries fill at an observed tick after a completed candle. Stops and closing exits use fresh observed ticks, including after a gap or while entries are paused. The runner targets a flat position in the final five minutes of the regular NSE session. If no fresh quote was available, it closes the remaining position at the first fresh tick of the next session. A feed outage can delay exits and increase simulated loss. The runner accepts regular NSE hours on weekdays and does not model special sessions. The implementation only subscribes to market data and never calls a Groww order endpoint.
 
+## Streaming paper session and performance
+
+The dashboard's **Session overview** shows the active streaming paper deployment, feed status, open units, today's net P&L, and the remaining daily loss budget in India time. Today’s figures remain blank until the first quote is accepted. The daily loss gate remains latched once triggered. Realized and unrealized changes use the prior session mark as the baseline where available.
+
+**Paper performance** shows recorded sessions per deployment, including losing sessions, fills, and maximum drawdown across accepted marks. It compares those figures with the saved evidence for the exact approved strategy version and settings. Backtest and paper periods and fill models can differ. Session figures are retained across restarts. Reports begin with accepted quotes after this feature is installed and flag older deployments with partial history.
+
 ## Next milestones
 
 - Confirm permitted data feeds and usage terms for each exchange and agency. Add ingestion persistence, exchange calendars and source-specific monitoring.
