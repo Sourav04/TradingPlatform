@@ -121,11 +121,14 @@ new ResizeObserver(drawChart).observe(element("chart"));
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const run = element("run");
+  const automate = element("automate");
+  const automatic = event.submitter === automate;
   const status = element("status");
   const payload = Object.fromEntries(new FormData(form));
   const file = fileInput.files[0];
   run.disabled = true;
-  status.textContent = "Running backtest…";
+  automate.disabled = true;
+  status.textContent = automatic ? "Saving automation…" : "Running backtest…";
   try {
     if (file && file.size > maxBytes) throw new Error("CSV must be 2 MB or smaller.");
     if (file) {
@@ -135,8 +138,11 @@ form.addEventListener("submit", async (event) => {
       if (!sample.ok) throw new Error("Sample CSV unavailable.");
       payload.csv = await sample.text();
     }
+    const [strategyId, version] = element("strategy").value.split("@");
+    payload.strategy_id = strategyId;
+    payload.strategy_version = version;
     payload.mock_news = !file;
-    const response = await fetch("/backtests", {
+    const response = await fetch(automatic ? "/backtests/automations" : "/backtests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -146,11 +152,18 @@ form.addEventListener("submit", async (event) => {
       const detail = result.detail;
       throw new Error(typeof detail === "string" ? detail : detail?.map((item) => item.msg).join(" · ") || "Backtest failed.");
     }
-    render(result);
-    status.textContent = "Backtest complete.";
+    if (automatic) {
+      status.textContent = `Automation saved. Current run: ${result.status}.`;
+      refreshJobs();
+    } else {
+      render(result);
+      status.textContent = "Backtest complete.";
+      refreshOperations();
+    }
   } catch (error) {
     status.textContent = error.message;
   } finally {
     run.disabled = false;
+    automate.disabled = false;
   }
 });

@@ -1,3 +1,5 @@
+from asyncio import Event as AsyncEvent
+from asyncio import create_task
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from trading_platform.api.dashboard import ASSETS, dashboard_router
+from trading_platform.api.operations import operations_router
 from trading_platform.backtesting.replay import SimulatedFill, run_replay
 from trading_platform.brokers.contracts import BrokerUnavailable
 from trading_platform.brokers.fake import FakeBroker
@@ -20,6 +23,7 @@ from trading_platform.execution.store import Store
 from trading_platform.market_data.feed import SimulatedFeed, fixture_quotes
 from trading_platform.news_engine.events import Event, replay
 from trading_platform.news_engine.fixtures import fixture_collectors
+from trading_platform.operations.worker import run_worker
 from trading_platform.risk.checks import RiskDenied, RiskGate, RiskLimits
 from trading_platform.strategies.ema import EMACrossover
 
@@ -35,21 +39,29 @@ class SimulationReport:
     news: list[Event]
 
 
-def create_app(store: Store | None = None) -> FastAPI:
+def create_app(store: Store | None = None, *, start_worker: bool = False) -> FastAPI:
     database = store if store is not None else Store(database_url())
     latency = news_latency()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        stop = AsyncEvent()
+        worker = None
         try:
             database.initialize()
+            if start_worker:
+                worker = create_task(run_worker(database, stop))
             yield
         finally:
+            stop.set()
+            if worker is not None:
+                await worker
             database.engine.dispose()
 
     api = FastAPI(title="TradingPlatform Simulation", lifespan=lifespan)
 
     api.include_router(dashboard_router(database, latency))
+    api.include_router(operations_router(database, latency))
     api.mount(
         "/dashboard/assets", StaticFiles(directory=ASSETS), name="dashboard-assets"
     )
@@ -100,4 +112,4 @@ def create_app(store: Store | None = None) -> FastAPI:
     return api
 
 
-app = create_app()
+app = create_app(start_worker=True)

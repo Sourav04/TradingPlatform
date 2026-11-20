@@ -8,7 +8,7 @@ from trading_platform.core.models import ManualClock, Quote, Signal
 from trading_platform.market_data.candles import INDIA, Candle
 from trading_platform.market_data.feed import SimulatedFeed
 from trading_platform.risk.checks import RiskDenied, RiskGate, RiskLimits
-from trading_platform.strategies.ema import EMACrossover
+from trading_platform.strategies.catalog import CATALOG, make_strategy
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,9 @@ class Settings:
 
     stop_loss_percent: Decimal | None = None
     max_risk_percent: Decimal | None = None
+    max_daily_loss_percent: Decimal | None = None
+    strategy_id: str = CATALOG[0].id
+    strategy_version: str = CATALOG[0].version
 
     def __post_init__(self) -> None:
         if not self.symbol.startswith("NSE:") or not self.symbol[4:].strip():
@@ -44,7 +47,11 @@ class Settings:
                 "Costs must be finite, nonnegative and total less than 10000 bps"
             )
 
-        for percent in (self.stop_loss_percent, self.max_risk_percent):
+        for percent in (
+            self.stop_loss_percent,
+            self.max_risk_percent,
+            self.max_daily_loss_percent,
+        ):
             if percent is not None and (
                 not percent.is_finite() or not 0 < percent < 100
             ):
@@ -126,13 +133,26 @@ class Report:
     trade_count: int
 
 
-def backtest(candles: Iterable[Candle], settings: Settings) -> Report:
-    strategy = EMACrossover(settings.fast, settings.slow, settings.units)
+def backtest(
+    candles: Iterable[Candle],
+    settings: Settings,
+    blocked_entries: frozenset[datetime] = frozenset(),
+) -> Report:
+    strategy = make_strategy(
+        settings.strategy_id,
+        settings.strategy_version,
+        settings.fast,
+        settings.slow,
+        settings.units,
+    )
     feed = SimulatedFeed()
     clock = ManualClock(datetime.combine(settings.start, time.min, INDIA))
-    risk = RiskGate(clock, feed, settings.limits, frozenset({strategy.name}))
+    risk = RiskGate(clock, feed, settings.limits, frozenset({settings.strategy_id}))
     cash = peak = settings.initial_cash
     units = 0
+    session_day = None
+    session_equity = cash
+    session_halted = False
     drawdown = Decimal(0)
     pending = None
     previous = None
@@ -154,6 +174,11 @@ def backtest(candles: Iterable[Candle], settings: Settings) -> Report:
             strategy.on_quote(close)
             continue
 
+        if session != session_day:
+            session_day = session
+            session_equity = equity[-1].value if equity else cash
+            session_halted = False
+
         # A down-gap stop already active at the open takes precedence over an EMA order.
         if stop is not None and candle.open <= stop[0]:
             fill = priced_fill(
@@ -169,11 +194,24 @@ def backtest(candles: Iterable[Candle], settings: Settings) -> Report:
             cash += fill.cash_change
             units, stop, pending = 0, None, None
 
+        daily_floor = None
+        if settings.max_daily_loss_percent is not None:
+            daily_floor = session_equity * (1 - settings.max_daily_loss_percent / 100)
+            session_halted = session_halted or cash + units * candle.open <= daily_floor
+
         if pending is not None:
             clock.current = candle.timestamp
             feed.publish(Quote(settings.symbol, candle.timestamp, candle.open))
             try:
                 quantity = risk.check(pending, {settings.symbol: units}, killed=False)
+                if quantity > 0 and (
+                    session_halted or candle.timestamp in blocked_entries
+                ):
+                    raise RiskDenied(
+                        "Daily loss limit reached"
+                        if session_halted
+                        else "Deployment entries paused"
+                    )
                 if quantity:
                     trigger = None
                     if quantity > 0 and settings.stop_loss_percent is not None:
@@ -236,6 +274,8 @@ def backtest(candles: Iterable[Candle], settings: Settings) -> Report:
             units, stop = 0, None
 
         value = cash + units * candle.close
+        if daily_floor is not None:
+            session_halted = session_halted or value <= daily_floor
         equity.append(Equity(candle.timestamp, cash, units, value))
         peak = max(peak, value)
         drawdown = max(drawdown, (peak - value) / peak * 100)

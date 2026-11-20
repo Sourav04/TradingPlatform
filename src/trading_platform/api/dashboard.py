@@ -2,7 +2,6 @@ from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, DecimalException
-from io import StringIO
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -12,10 +11,18 @@ from pydantic import BaseModel, Field
 from trading_platform.backtesting.historical import Report, Settings, backtest
 from trading_platform.backtesting.replay import Costs
 from trading_platform.execution.store import Store
-from trading_platform.market_data.candles import parse_candles
+from trading_platform.market_data.candles import Candle
 from trading_platform.news_engine.events import FRESHNESS, Event, replay
 from trading_platform.news_engine.fixtures import fixture_collectors
 from trading_platform.news_engine.journal import events_during
+from trading_platform.operations.automation import Job, jobs, register
+from trading_platform.operations.workspace import (
+    DAILY_LOSS,
+    Evidence,
+    evidence_for,
+    parse_csv,
+)
+from trading_platform.strategies.catalog import CATALOG
 
 ASSETS = Path(__file__).with_name("dashboard_assets")
 
@@ -34,6 +41,8 @@ class DashboardInput(BaseModel):
     stop_loss_percent: Decimal = Decimal("2")
     max_risk_percent: Decimal = Decimal("1")
     mock_news: bool = False
+    strategy_id: str = CATALOG[0].id
+    strategy_version: str = CATALOG[0].version
 
 
 @dataclass(frozen=True)
@@ -42,6 +51,7 @@ class DashboardReport:
     news_as_of: datetime
     news_mode: str
     news: list[Event]
+    evidence: Evidence
 
 
 def dashboard_router(store: Store, latency: timedelta) -> APIRouter:
@@ -53,7 +63,7 @@ def dashboard_router(store: Store, latency: timedelta) -> APIRouter:
 
     @router.post("/backtests")
     def run_dashboard_backtest(inputs: DashboardInput) -> DashboardReport:
-        report = run_csv_backtest(inputs)
+        report, candles = run_csv_backtest(inputs)
         bars = [point.bar for point in report.equity_curve]
         if inputs.mock_news:
             events = [
@@ -83,30 +93,50 @@ def dashboard_router(store: Store, latency: timedelta) -> APIRouter:
             bars[-1],
             "mock" if inputs.mock_news else "recorded",
             list(visible.values()),
+            evidence_for(store, inputs.csv, report, candles, inputs.mock_news),
         )
+
+    @router.get("/backtests/jobs")
+    def backtest_jobs() -> list[Job]:
+        return jobs(store)
+
+    @router.post("/backtests/automations", status_code=202)
+    def register_automation(inputs: DashboardInput) -> Job:
+        try:
+            return register(
+                store, inputs.csv, backtest_settings(inputs), inputs.mock_news
+            )
+        except (ValueError, DecimalException) as exc:
+            raise HTTPException(422, str(exc) or "Invalid backtest input") from exc
 
     return router
 
 
-def run_csv_backtest(inputs: DashboardInput) -> Report:
+def backtest_settings(inputs: DashboardInput) -> Settings:
+    return Settings(
+        inputs.symbol,
+        inputs.start,
+        inputs.end,
+        inputs.fast,
+        inputs.slow,
+        inputs.units,
+        inputs.cash,
+        Costs(inputs.fee_bps, inputs.slippage_bps),
+        stop_loss_percent=inputs.stop_loss_percent,
+        max_risk_percent=inputs.max_risk_percent,
+        max_daily_loss_percent=DAILY_LOSS,
+        strategy_id=inputs.strategy_id,
+        strategy_version=inputs.strategy_version,
+    )
+
+
+def run_csv_backtest(inputs: DashboardInput) -> tuple[Report, list[Candle]]:
     try:
-        settings = Settings(
-            inputs.symbol,
-            inputs.start,
-            inputs.end,
-            inputs.fast,
-            inputs.slow,
-            inputs.units,
-            inputs.cash,
-            Costs(inputs.fee_bps, inputs.slippage_bps),
-            stop_loss_percent=inputs.stop_loss_percent,
-            max_risk_percent=inputs.max_risk_percent,
-        )
-        report = backtest(
-            parse_candles(StringIO(inputs.csv.removeprefix("\ufeff"))), settings
-        )
+        settings = backtest_settings(inputs)
+        candles = parse_csv(inputs.csv)
+        report = backtest(candles, settings)
     except (ValueError, DecimalException) as exc:
         raise HTTPException(
             422, str(exc) or "Invalid numeric values in backtest"
         ) from exc
-    return report
+    return report, candles
