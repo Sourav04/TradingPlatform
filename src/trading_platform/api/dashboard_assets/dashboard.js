@@ -18,7 +18,7 @@ function drawChart() {
   ctx.scale(ratio, ratio);
   ctx.font = "12px system-ui";
   if (!equity.length) {
-    ctx.fillStyle = "#afbed2";
+    ctx.fillStyle = "#53667a";
     ctx.fillText("Run a backtest to see equity over time.", 6, 25);
     return;
   }
@@ -30,10 +30,10 @@ function drawChart() {
   const top = 13;
   const bottom = height - 26;
   const range = max - min;
-  ctx.fillStyle = "#afbed2";
+  ctx.fillStyle = "#53667a";
   for (let i = 0; i <= 3; i++) {
     const y = top + (bottom - top) * i / 3;
-    ctx.strokeStyle = "#2b374b";
+    ctx.strokeStyle = "#dce5ef";
     ctx.beginPath();
     ctx.moveTo(left, y);
     ctx.lineTo(right, y);
@@ -41,19 +41,36 @@ function drawChart() {
     ctx.fillText(compact.format(max - range * i / 3), 0, y + 4);
     if (!range) break;
   }
-  ctx.strokeStyle = "#66e4b7";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
   const stride = Math.max(1, Math.floor(values.length / (2 * width)));
+  const points = [];
   values.forEach((value, index) => {
     if (index % stride && index !== values.length - 1) return;
     const x = values.length === 1 ? (left + right) / 2 : left + (right - left) * index / (values.length - 1);
     const y = range ? bottom - (bottom - top) * (value - min) / range : (bottom + top) / 2;
-    if (values.length === 1) ctx.arc(x, y, 3, 0, Math.PI * 2);
-    else if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    points.push([x, y]);
   });
+  if (points.length > 1) {
+    const fill = ctx.createLinearGradient(0, top, 0, bottom);
+    fill.addColorStop(0, "#16a48240");
+    fill.addColorStop(1, "#16a48202");
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    points.forEach(([x, y], index) => index ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    ctx.lineTo(points.at(-1)[0], bottom);
+    ctx.lineTo(points[0][0], bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.strokeStyle = "#078365";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  points.forEach(([x, y], index) => index ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
   ctx.stroke();
+  ctx.fillStyle = "#078365";
+  ctx.beginPath();
+  ctx.arc(...points.at(-1), 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#53667a";
   const first = dateLabel.format(new Date(equity[0].bar));
   const last = dateLabel.format(new Date(equity.at(-1).bar));
   ctx.fillText(first, left, height - 5);
@@ -158,6 +175,7 @@ form.addEventListener("submit", async (event) => {
     } else {
       render(result);
       status.textContent = "Backtest complete.";
+      if (window.matchMedia("(max-width: 1040px)").matches) element("results").focus();
       refreshOperations();
     }
   } catch (error) {

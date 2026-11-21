@@ -193,6 +193,24 @@ async function refreshOperations() {
     const activeReplay = data.paper.some((item) => item.status !== "closed");
     const activeStream = data.streaming_paper.some((item) => item.paper.status !== "closed");
     renderEvidence(data.evidence, activeReplay || activeStream, data.risk_per_trade_percent);
+    const latest = data.evidence[0];
+    const preview = element("latest-backtest");
+    if (latest) {
+      const link = textNode("a", "Review evidence");
+      link.href = "#evidence-" + latest.id;
+      preview.replaceChildren(
+        textNode("strong", `${latest.symbol} · ${latest.strategy_id}`),
+        textNode("p", `${money.format(latest.historical.pnl)} net P&L · ${latest.historical.fills} fills · ${latest.confidence}`),
+        link,
+      );
+    } else {
+      preview.replaceChildren(textNode("p", "No backtest evidence saved."));
+    }
+    if (location.hash.startsWith("#evidence-")) {
+      const selected = element(location.hash.slice(1));
+      if (selected) selected.open = true;
+    }
+
     renderStreams(data.streaming_paper);
     renderPaper(data.paper);
     renderNews(data.news, data.latest_news_at);
