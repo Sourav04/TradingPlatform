@@ -7,22 +7,22 @@ function showSession(record) {
   const status = element("session-status");
   if (!record) {
     status.textContent = "No active streaming paper deployment.";
-    return;
   }
   const attention = [];
-  if (record.feed_status !== "fresh") attention.push("Feed " + record.feed_status);
-  if (record.units) attention.push(record.units + " units open");
-  if (record.units && record.stop === null) attention.push("Protective stop missing");
-  if (record.remaining_loss_budget !== null && Number(record.remaining_loss_budget) === 0) {
+  if (record && record.feed_status !== "fresh") attention.push("Feed " + record.feed_status);
+  if (record?.units) attention.push(record.units + " units open");
+  if (record?.units && record.stop === null) attention.push("Protective stop missing");
+  if (record && record.remaining_loss_budget !== null && Number(record.remaining_loss_budget) === 0) {
     attention.push("Daily loss limit reached");
   }
-  status.textContent = [`${record.symbol} · ${record.status}`, ...attention,
+  status.classList.toggle("attention", Boolean(attention.length));
+  if (record) status.textContent = [`${record.symbol} · ${record.status}`, ...attention,
     record.current ? "Last mark " + formatTime(record.current.as_of) : "No marks recorded today"].join(" · ");
   const items = [
-    ["Today’s net P&L", record.current?.pnl],
-    ["Today’s realized P&L", record.current?.realized],
-    ["Today’s unrealized change", record.current?.unrealized],
-    ["Remaining daily loss budget", record.remaining_loss_budget],
+    ["Today’s net P&L", record?.current?.pnl],
+    ["Today’s realized P&L", record?.current?.realized],
+    ["Today’s unrealized change", record?.current?.unrealized],
+    ["Remaining daily loss budget", record?.remaining_loss_budget],
   ];
   const cards = document.createElement("div");
   cards.className = "metrics";

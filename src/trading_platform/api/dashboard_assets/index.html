@@ -8,20 +8,52 @@
   <script src="/dashboard/assets/dashboard.js" defer></script>
   <script src="/dashboard/assets/operations.js" defer></script>
   <script src="/dashboard/assets/performance.js" defer></script>
+  <script src="/dashboard/assets/workspace.js" defer></script>
 </head>
 <body>
-  <header><a href="/dashboard">TradingPlatform</a><span>Simulation only</span></header>
-  <main>
-    <h1>Trading operations</h1>
+  <a class="skip-link" href="#workspace-title">Skip to workspace</a>
+  <aside class="sidebar">
+    <a class="brand" href="/dashboard" aria-label="TradingPlatform home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>TradingPlatform<small>Trading operations</small></span>
+    </a>
     <nav class="workspace-nav" aria-label="Workspace">
-      <a href="#session-overview">Session</a><a href="#paper-performance">Performance</a><a href="#catalog">Strategies</a><a href="#research">Backtest</a><a href="#paper">Paper trading</a><a href="#live">Live orders</a><a href="#newsroom">News signals</a>
-      <button type="button" class="secondary" id="refresh-operations">Refresh</button>
+      <a href="#session-overview"><span aria-hidden="true">▦</span>Overview</a>
+      <a href="#catalog"><span aria-hidden="true">◫</span>Strategies</a>
+      <a href="#research"><span aria-hidden="true">⌁</span>Backtest</a>
+      <a href="#paper"><span aria-hidden="true">◎</span>Paper trading</a>
+      <a href="#paper-performance"><span aria-hidden="true">↑</span>Performance</a>
+      <a href="#newsroom"><span aria-hidden="true">≡</span>News signals</a>
+      <a href="#live"><span aria-hidden="true">◈</span>Live orders</a>
     </nav>
+    <div class="sidebar-footer"><span class="mode-dot" aria-hidden="true"></span><span>Simulation only<small>Broker execution disabled</small></span></div>
+  </aside>
+  <main>
+    <header class="workspace-top">
+      <div>
+        <p class="breadcrumb">Workspace <span aria-hidden="true">/</span> <span id="workspace-location">Overview</span></p>
+        <h1 id="workspace-title" tabindex="-1">Session overview</h1>
+        <p id="workspace-description">Monitor your paper deployment, portfolio risk and session results.</p>
+      </div>
+      <button type="button" class="secondary refresh" id="refresh-operations"><span aria-hidden="true">↻</span> Refresh</button>
+    </header>
     <p id="operations-status" class="status" role="status" aria-live="polite"></p>
-    <section id="session-overview" class="panel workspace-panel">
-      <h2>Session overview</h2>
-      <p id="session-status" role="status"></p>
+    <section id="session-overview" class="workspace-panel">
+      <div class="overview-layout">
+        <article class="panel session-panel">
+          <h2>Active paper session</h2>
+          <p id="session-status" role="status">Checking paper deployments…</p>
+        </article>
+        <article class="panel quick-panel">
+          <h2>Trading workflow</h2>
+          <div class="quick-actions">
+            <a href="#research"><span>Run a backtest<small>Test a strategy on your candles</small></span><span class="chevron" aria-hidden="true"></span></a>
+            <a href="#paper"><span>Inspect paper deployments<small>Review fills, positions and active stops</small></span><span class="chevron" aria-hidden="true"></span></a>
+          </div>
+        </article>
+      </div>
       <div id="session-cards"></div>
+      <article class="panel latest-panel"><h2>Latest backtest</h2><div id="latest-backtest"></div></article>
     </section>
     <section id="paper-performance" class="panel workspace-panel">
       <h2>Paper performance</h2>
@@ -39,13 +71,14 @@
       <div id="evidence-rows" class="records"></div>
     </section>
     <section id="research" class="workspace-panel">
-    <h2 class="section-title">Run a backtest</h2>
+
     <div class="layout">
       <form id="config" class="panel">
         <h2>Run settings</h2>
-        <label>Historical candles <input id="csv" type="file" accept=".csv,text/csv"></label>
-        <button type="button" class="secondary" id="sample">Use sample CSV</button>
-        <p id="dataset">Synthetic daily candles</p>
+        <div class="dataset-box">
+          <label>Historical candles <input id="csv" type="file" accept=".csv,text/csv"></label>
+          <div class="dataset-actions"><p id="dataset">Synthetic daily candles</p><button type="button" class="secondary" id="sample">Use sample CSV</button></div>
+        </div>
         <label>Strategy <select id="strategy" required></select></label>
         <label>Symbol <input name="symbol" value="NSE:DEMO" required></label>
         <div class="pair">
@@ -72,14 +105,14 @@
         </div>
         <p id="status" role="status" aria-live="polite"></p>
       </form>
-      <section id="results" aria-label="Backtest results">
+      <section id="results" aria-label="Backtest results" tabindex="-1">
         <div class="metrics">
           <article class="panel"><span>Net P&amp;L</span><strong id="pnl">—</strong></article>
           <article class="panel"><span>Final equity</span><strong id="equity">—</strong></article>
           <article class="panel"><span>Max drawdown</span><strong id="drawdown">—</strong></article>
           <article class="panel"><span>Fills</span><strong id="fills">—</strong></article>
         </div>
-        <article class="panel chart"><h2>Equity curve</h2><canvas id="chart" aria-label="End-of-candle equity in rupees" role="img"></canvas></article>
+        <article class="panel chart"><div class="chart-heading"><h2>Equity curve</h2><span>Portfolio value · INR</span></div><canvas id="chart" aria-label="End-of-candle equity in rupees" role="img"></canvas></article>
         <article class="panel"><h2>Trade log</h2>
           <div class="table-wrap"><table><thead><tr><th>Session (IST)</th><th>Side</th><th>Units</th><th>Price</th><th>Stop</th><th>Reason</th></tr></thead><tbody id="trades"></tbody></table></div>
           <p id="trade-note"></p><ul id="rejections"></ul>
