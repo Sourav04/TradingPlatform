@@ -1,5 +1,6 @@
 const opsStatus = element("operations-status");
 let operationsBusy = false;
+let renderedStreams = "";
 
 function textNode(tag, text, className) {
   const node = document.createElement(tag);
@@ -94,6 +95,13 @@ function renderEvidence(items, current, policy) {
         `Approve ${item.strategy_id} v${item.strategy_version} for ${item.symbol} in paper replay?`
       ));
     }
+    if (item.status === "Paper only" && !current && item.dataset !== "Synthetic sample"
+        && Number(settings.max_risk_percent) === Number(policy)) {
+      node.append(actionButton("Approve Groww paper stream", () =>
+        requestOperation("/operations/stream-paper", { evidence_id: item.id }),
+        `Approve ${item.strategy_id} v${item.strategy_version} for ${item.symbol} using Groww prices and simulated money?`
+      ));
+    }
     return node;
   }));
 }
@@ -182,7 +190,10 @@ async function refreshOperations() {
     element("catalog-rows").replaceChildren(...data.strategies.map((item) =>
       tableRow([item.name, item.version, item.source, "Paper replay"])));
     element("shared-policy").textContent = `Shared policy · ${data.risk_per_trade_percent}% risk per trade · ${data.daily_loss_percent}% daily loss limit · ${money.format(data.max_gross_inr)} gross exposure cap · One active paper deployment`;
-    renderEvidence(data.evidence, data.paper.some((item) => item.status !== "closed"), data.risk_per_trade_percent);
+    const activeReplay = data.paper.some((item) => item.status !== "closed");
+    const activeStream = data.streaming_paper.some((item) => item.paper.status !== "closed");
+    renderEvidence(data.evidence, activeReplay || activeStream, data.risk_per_trade_percent);
+    renderStreams(data.streaming_paper);
     renderPaper(data.paper);
     renderNews(data.news, data.latest_news_at);
     element("live-status").textContent = "Live execution disabled. No strategy is eligible for live deployment.";
@@ -251,3 +262,52 @@ async function refreshJobs() {
 
 refreshJobs();
 setInterval(refreshJobs, 3000);
+
+
+async function refreshStreams() {
+  try {
+    renderStreams(await requestOperation("/operations/stream-paper"));
+  } catch {
+    element("stream-note").textContent = "Unable to refresh streaming paper.";
+  }
+}
+
+function renderStreams(streams) {
+  element("stream-note").textContent = streams.length ? "" : "No streaming deployment approved.";
+  const signature = JSON.stringify(streams);
+  if (signature === renderedStreams) return;
+  renderedStreams = signature;
+  element("stream-rows").replaceChildren(...streams.map((stream) => {
+    const paper = stream.paper;
+    const record = document.createElement("article");
+    record.className = "record";
+    const state = paper.status === "closed" ? "closed" : paper.status + " · feed " + stream.feed_status;
+    record.append(textNode("strong", `${paper.symbol} · ${paper.strategy_id} v${paper.strategy_version} · ${state}`));
+    record.append(textNode("p", `${paper.cursor} complete candles · ${paper.units} units · Stop ${paper.stop === null ? "—" : money.format(paper.stop)} · Last tick ${stream.last_tick_at ? formatTime(stream.last_tick_at) : "waiting"}`));
+    record.append(textNode("p", `Equity ${money.format(paper.equity)} · Realized ${money.format(paper.realized)} · Unrealized ${money.format(paper.unrealized)}`));
+    if (paper.fills.length) record.append(tableWithRows(
+      ["Time (IST)", "Side", "Units", "Price", "Reason", "Status"],
+      paper.fills.map((fill) => [
+        formatTime(fill.fill_bar), fill.units > 0 ? "Buy" : "Sell", Math.abs(fill.units),
+        money.format(fill.execution_price ?? fill.open_price),
+        ({ema: "EMA crossover", stop_loss: "Stop loss", session_close: "Session close", paper_close: "Paper close"})[fill.reason] ?? fill.reason,
+        "Simulated fill",
+      ]),
+    ));
+    if (paper.rejections.length) record.append(textNode("p", paper.rejections.at(-1), "negative"));
+    if (paper.status !== "closed") {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const send = (action) => requestOperation("/operations/stream-paper/" + paper.id, {action, revision: paper.revision});
+      actions.append(
+        paper.status === "paused" ? actionButton("Resume stream entries", () => send("resume"))
+          : actionButton("Pause stream entries", () => send("pause")),
+        actionButton("Close stream deployment", () => send("close"), "Close this simulated deployment? An open position requires a fresh quote."),
+      );
+      record.append(actions);
+    }
+    return record;
+  }));
+}
+
+setInterval(refreshStreams, 3000);

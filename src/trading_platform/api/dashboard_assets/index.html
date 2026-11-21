@@ -7,16 +7,27 @@
   <link rel="stylesheet" href="/dashboard/assets/dashboard.css">
   <script src="/dashboard/assets/dashboard.js" defer></script>
   <script src="/dashboard/assets/operations.js" defer></script>
+  <script src="/dashboard/assets/performance.js" defer></script>
 </head>
 <body>
   <header><a href="/dashboard">TradingPlatform</a><span>Simulation only</span></header>
   <main>
     <h1>Trading operations</h1>
     <nav class="workspace-nav" aria-label="Workspace">
-      <a href="#catalog">Strategies</a><a href="#research">Backtest</a><a href="#paper">Paper trading</a><a href="#live">Live orders</a><a href="#newsroom">News signals</a>
+      <a href="#session-overview">Session</a><a href="#paper-performance">Performance</a><a href="#catalog">Strategies</a><a href="#research">Backtest</a><a href="#paper">Paper trading</a><a href="#live">Live orders</a><a href="#newsroom">News signals</a>
       <button type="button" class="secondary" id="refresh-operations">Refresh</button>
     </nav>
     <p id="operations-status" class="status" role="status" aria-live="polite"></p>
+    <section id="session-overview" class="panel workspace-panel">
+      <h2>Session overview</h2>
+      <p id="session-status" role="status"></p>
+      <div id="session-cards"></div>
+    </section>
+    <section id="paper-performance" class="panel workspace-panel">
+      <h2>Paper performance</h2>
+      <p id="performance-status" role="status"></p>
+      <div id="performance-rows" class="records"></div>
+    </section>
     <section id="catalog" class="panel workspace-panel">
       <h2>Strategy catalog</h2>
       <div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Version</th><th>Code</th><th>Deployment eligibility</th></tr></thead><tbody id="catalog-rows"></tbody></table></div>
@@ -82,6 +93,10 @@
       <p id="shared-policy"></p>
       <p id="paper-empty">Approve a backtest configuration to start paper replay.</p>
       <div id="paper-rows" class="records"></div>
+      <h3 class="subheading">Streaming paper</h3>
+      <p>Groww last traded price · Five-minute candles · Volume unavailable</p>
+      <p id="stream-note">No streaming deployment approved.</p>
+      <div id="stream-rows" class="records"></div>
     </section>
     <section id="live" class="panel workspace-panel">
       <h2>Live orders</h2>
